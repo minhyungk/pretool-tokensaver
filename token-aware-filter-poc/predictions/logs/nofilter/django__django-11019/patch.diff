@@ -1,0 +1,31 @@
+diff --git a/django/forms/widgets.py b/django/forms/widgets.py
+index 02aa32b207..d725bc8c96 100644
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -139,11 +139,21 @@ class Media:
+                 combined_list.insert(last_insert_index, path)
+             else:
+                 if index > last_insert_index:
+-                    warnings.warn(
+-                        'Detected duplicate Media files in an opposite order:\n'
+-                        '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
+-                        MediaOrderConflictWarning,
+-                    )
++                    # A conflict is detected only if list_1 and list_2 both
++                    # explicitly contain the same two files in different
++                    # relative order. If one list doesn't contain both files,
++                    # their relative order in combined_list is arbitrary and
++                    # shouldn't raise a warning.
++                    if last_insert_index < len(combined_list):
++                        file_at_insert_pos = combined_list[last_insert_index]
++                        # Check if both files are in both lists
++                        if (path in list_1 and file_at_insert_pos in list_1 and
++                                path in list_2 and file_at_insert_pos in list_2):
++                            warnings.warn(
++                                'Detected duplicate Media files in an opposite order:\n'
++                                '%s\n%s' % (file_at_insert_pos, path),
++                                MediaOrderConflictWarning,
++                            )
+                 # path already exists in the list. Update last_insert_index so
+                 # that the following elements are inserted in front of this one.
+                 last_insert_index = index

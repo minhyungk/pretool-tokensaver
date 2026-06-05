@@ -50,7 +50,8 @@ On a BLOCK the hook exits with code 2 — Claude Code treats this as a tool fail
 | `results.py` | Renders benchmark table and summary |
 | `swe_benchmark.py` | Phase 2 SWE-bench-Lite evaluation harness |
 | `swe_results.py` | Renders per-instance table from `swe_results.json` |
-| `swe_results.json` | Raw results from the 40-run executed evaluation |
+| `swe_results.json` | Summary metrics from the 40-run executed evaluation |
+| `predictions/` | Full model-generated patches (JSONL) + per-instance `patch.diff` and `report.json` from the SWE-bench Docker harness |
 
 ---
 

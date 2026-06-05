@@ -1,0 +1,46 @@
+diff --git a/django/core/files/storage.py b/django/core/files/storage.py
+index 4c27fce605..f369be7d89 100644
+--- a/django/core/files/storage.py
++++ b/django/core/files/storage.py
+@@ -7,6 +7,7 @@ from django.core.exceptions import SuspiciousFileOperation
+ from django.core.files import File, locks
+ from django.core.files.move import file_move_safe
+ from django.core.signals import setting_changed
++from django.urls import get_script_prefix
+ from django.utils import timezone
+ from django.utils._os import safe_join
+ from django.utils.crypto import get_random_string
+@@ -332,7 +333,11 @@ class FileSystemStorage(Storage):
+         url = filepath_to_uri(name)
+         if url is not None:
+             url = url.lstrip('/')
+-        return urljoin(self.base_url, url)
++        url = urljoin(self.base_url, url)
++        # Prepend SCRIPT_NAME prefix if the URL is absolute
++        if url.startswith('/'):
++            url = get_script_prefix().rstrip('/') + url
++        return url
+ 
+     def _datetime_from_timestamp(self, ts):
+         """
+diff --git a/django/templatetags/static.py b/django/templatetags/static.py
+index 39712aaba0..a86741accc 100644
+--- a/django/templatetags/static.py
++++ b/django/templatetags/static.py
+@@ -2,6 +2,7 @@ from urllib.parse import quote, urljoin
+ 
+ from django import template
+ from django.apps import apps
++from django.urls import get_script_prefix
+ from django.utils.encoding import iri_to_uri
+ from django.utils.html import conditional_escape
+ 
+@@ -44,6 +45,8 @@ class PrefixNode(template.Node):
+             prefix = ''
+         else:
+             prefix = iri_to_uri(getattr(settings, name, ''))
++        if prefix:
++            prefix = get_script_prefix().rstrip('/') + prefix
+         return prefix
+ 
+     def render(self, context):

@@ -1,0 +1,47 @@
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 2154a46320..af6070888b 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -17,6 +17,7 @@ from django.conf import settings
+ from django.core.checks import Error, Warning
+ from django.core.checks.urls import check_resolver
+ from django.core.exceptions import ImproperlyConfigured, ViewDoesNotExist
++from django.http import Http404
+ from django.utils.datastructures import MultiValueDict
+ from django.utils.functional import cached_property
+ from django.utils.http import RFC3986_SUBDELIMS, escape_leading_slashes
+@@ -258,6 +259,8 @@ class RoutePattern(CheckURLMixin):
+                 converter = self.converters[key]
+                 try:
+                     kwargs[key] = converter.to_python(value)
++                except Http404:
++                    raise
+                 except ValueError:
+                     return None
+             return path[match.end():], (), kwargs
+diff --git a/tests/urlpatterns/tests.py b/tests/urlpatterns/tests.py
+index 214739f678..b6ca86c8fc 100644
+--- a/tests/urlpatterns/tests.py
++++ b/tests/urlpatterns/tests.py
+@@ -1,6 +1,7 @@
+ import uuid
+ 
+ from django.core.exceptions import ImproperlyConfigured
++from django.http import Http404
+ from django.test import SimpleTestCase
+ from django.test.utils import override_settings
+ from django.urls import Resolver404, path, resolve, reverse
+@@ -219,6 +220,13 @@ class ConversionExceptionTests(SimpleTestCase):
+         with self.assertRaisesMessage(TypeError, 'This type error propagates.'):
+             resolve('/dynamic/abc/')
+ 
++    def test_resolve_http404_propagates(self):
++        @DynamicConverter.register_to_python
++        def raises_http404(value):
++            raise Http404('This Http404 exception propagates.')
++        with self.assertRaisesMessage(Http404, 'This Http404 exception propagates.'):
++            resolve('/dynamic/abc/')
++
+     def test_reverse_value_error_propagates(self):
+         @DynamicConverter.register_to_url
+         def raises_value_error(value):

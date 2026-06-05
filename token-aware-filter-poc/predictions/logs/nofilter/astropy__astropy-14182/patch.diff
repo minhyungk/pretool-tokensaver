@@ -1,0 +1,29 @@
+diff --git a/astropy/io/ascii/rst.py b/astropy/io/ascii/rst.py
+index abdeba8ef..9e8680928 100644
+--- a/astropy/io/ascii/rst.py
++++ b/astropy/io/ascii/rst.py
+@@ -50,6 +50,13 @@ class RST(FixedWidth):
+     or for ones which define column spans through the use of an additional
+     line of dashes in the header.
+ 
++    Parameters
++    ----------
++    header_rows : list, optional
++        List of table column attributes to output in the header.
++        Defaults to ["name"], which outputs just the column names.
++        To include additional rows like units, use ["name", "unit"].
++
+     """
+ 
+     _format_name = "rst"
+@@ -57,8 +64,8 @@ class RST(FixedWidth):
+     data_class = SimpleRSTData
+     header_class = SimpleRSTHeader
+ 
+-    def __init__(self):
+-        super().__init__(delimiter_pad=None, bookend=False)
++    def __init__(self, header_rows=None):
++        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+ 
+     def write(self, lines):
+         lines = super().write(lines)

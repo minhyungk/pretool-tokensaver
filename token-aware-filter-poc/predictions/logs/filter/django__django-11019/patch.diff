@@ -1,0 +1,883 @@
+diff --git a/analyze_problem.py b/analyze_problem.py
+new file mode 100644
+index 0000000000..fbd919ab29
+--- /dev/null
++++ b/analyze_problem.py
+@@ -0,0 +1,40 @@
++"""
++Analyze the root cause of the MediaOrderConflictWarning issue.
++
++The problem:
++- ColorPicker().media + SimpleTextWidget().media creates ['color-picker.js', 'text-editor.js']
++- This creates a FALSE constraint that color-picker.js must come before text-editor.js
++- When we add FancyTextWidget with ['text-editor.js', 'text-editor-extras.js', 'color-picker.js'],
++  the merge algorithm sees a conflict because:
++  - list_1 has: color-picker.js (index 0), text-editor.js (index 1)
++  - list_2 has: text-editor.js (wants to be at index 1 or earlier based on its position in list_2)
++
++The false constraint comes from the fact that color-picker.js and text-editor.js were
++INDEPENDENT (no ordering constraint between them), but the merge put one before the other.
++
++Key insight: When two items from different lists have never been in the same list before,
++there's NO ordering constraint between them. The warning should only fire when there's
++a REAL conflict - i.e., when two items appeared in the same source list in one order,
++and then appear in another source list in the opposite order.
++
++Solution: Track which pairs of items have explicit ordering constraints from being
++in the same source list, and only warn when those constraints conflict.
++"""
++
++# The current merge algorithm processes list_2 in reverse and tracks last_insert_index.
++# The problem is that it assumes ALL ordering in combined_list is meaningful,
++# but some of that ordering is arbitrary (from merging independent lists).
++
++# Example walkthrough:
++# list_1 = ['color-picker.js', 'text-editor.js']  # This order is arbitrary!
++# list_2 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']  # This order is meaningful!
++
++# When merging, we process list_2 in reverse:
++# 1. color-picker.js: found at index 0, set last_insert_index = 0
++# 2. text-editor-extras.js: not found, insert at index 0 -> ['text-editor-extras.js', 'color-picker.js', 'text-editor.js']
++# 3. text-editor.js: found at index 2, but last_insert_index = 0, so 2 > 0 triggers warning
++
++# The warning says "text-editor-extras.js should come before text-editor.js" which is WRONG
++# because list_2 explicitly says text-editor.js should come BEFORE text-editor-extras.js!
++
++print(__doc__)
+diff --git a/better_analysis.py b/better_analysis.py
+new file mode 100644
+index 0000000000..b46d970a98
+--- /dev/null
++++ b/better_analysis.py
+@@ -0,0 +1,57 @@
++"""
++Better analysis: The warning should only fire when list_2 has an ordering constraint
++that conflicts with list_1.
++
++In list_2, we have: ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++This means:
++- text-editor.js must come before text-editor-extras.js
++- text-editor-extras.js must come before color-picker.js
++
++In list_1 (combined from ColorPicker + SimpleTextWidget), we have: ['color-picker.js', 'text-editor.js']
++This means:
++- color-picker.js must come before text-editor.js (but this is an ARBITRARY constraint!)
++
++The REAL conflict would be if list_1 said "A must come before B" and list_2 said "B must come before A"
++for the same pair (A, B).
++
++But here:
++- list_1 says: color-picker.js before text-editor.js
++- list_2 says: text-editor.js before color-picker.js (indirectly through text-editor-extras.js)
++
++Wait, that IS a conflict! So maybe the warning is correct, but the MESSAGE is wrong?
++
++Let me trace through more carefully:
++
++list_1 = ['color-picker.js', 'text-editor.js']
++list_2 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++Processing list_2 in reverse: ['color-picker.js', 'text-editor-extras.js', 'text-editor.js']
++
++Step 1: Process 'color-picker.js'
++  - Found at index 0 in combined_list
++  - last_insert_index = 0
++
++Step 2: Process 'text-editor-extras.js'
++  - Not found, insert at index 0
++  - combined_list = ['text-editor-extras.js', 'color-picker.js', 'text-editor.js']
++  - last_insert_index = 0 (unchanged)
++
++Step 3: Process 'text-editor.js'
++  - Found at index 2 in combined_list
++  - index (2) > last_insert_index (0)
++  - Warning: combined_list[0] and combined_list[2] are in wrong order
++  - That's 'text-editor-extras.js' and 'text-editor.js'
++  - last_insert_index = 2
++
++But wait! The warning is comparing text-editor-extras.js with text-editor.js, saying they're in
++the wrong order. But text-editor-extras.js wasn't in list_1 at all! It was just inserted.
++
++The real issue is: the algorithm warns when it finds an element from list_2 at an index
++greater than last_insert_index. But last_insert_index can be set by finding an element
++OR by inserting a new element. When we insert a new element, that shouldn't create
++a new ordering constraint with elements that come after it in combined_list.
++
++SOLUTION: Only update last_insert_index when we FIND an existing element, not when we INSERT a new one!
++"""
++
++print(__doc__)
+diff --git a/django/forms/widgets.py b/django/forms/widgets.py
+index 02aa32b207..0b0093dd05 100644
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -128,6 +128,9 @@ class Media:
+         # Start with a copy of list_1.
+         combined_list = list(list_1)
+         last_insert_index = len(list_1)
++        # Keep track of the original elements from list_1 to avoid warning
++        # about conflicts that only involve newly inserted elements.
++        list_1_set = set(list_1)
+         # Walk list_2 in reverse, inserting each element into combined_list if
+         # it doesn't already exist.
+         for path in reversed(list_2):
+@@ -139,11 +142,15 @@ class Media:
+                 combined_list.insert(last_insert_index, path)
+             else:
+                 if index > last_insert_index:
+-                    warnings.warn(
+-                        'Detected duplicate Media files in an opposite order:\n'
+-                        '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
+-                        MediaOrderConflictWarning,
+-                    )
++                    # Only warn if both elements were in list_1 originally.
++                    # Conflicts that arise from newly inserted elements don't
++                    # represent a real ordering conflict.
++                    if combined_list[last_insert_index] in list_1_set:
++                        warnings.warn(
++                            'Detected duplicate Media files in an opposite order:\n'
++                            '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
++                            MediaOrderConflictWarning,
++                        )
+                 # path already exists in the list. Update last_insert_index so
+                 # that the following elements are inserted in front of this one.
+                 last_insert_index = index
+diff --git a/test_consecutive_insertions.py b/test_consecutive_insertions.py
+new file mode 100644
+index 0000000000..1ddc07c7a4
+--- /dev/null
++++ b/test_consecutive_insertions.py
+@@ -0,0 +1,51 @@
++"""Test consecutive insertions"""
++import sys
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++def merge_original(list_1, list_2):
++    """Original algorithm WITHOUT the fix"""
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++
++    for path in reversed(list_2):
++        try:
++            index = combined_list.index(path)
++        except ValueError:
++            combined_list.insert(last_insert_index, path)
++            # NO INCREMENT
++        else:
++            last_insert_index = index
++    return combined_list
++
++def merge_fixed(list_1, list_2):
++    """Algorithm WITH the fix"""
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++
++    for path in reversed(list_2):
++        try:
++            index = combined_list.index(path)
++        except ValueError:
++            combined_list.insert(last_insert_index, path)
++            last_insert_index += 1  # INCREMENT
++        else:
++            last_insert_index = index
++    return combined_list
++
++# Test: inserting multiple new elements
++list_1 = []
++list_2 = ['A', 'B', 'C']
++
++print("Inserting ['A', 'B', 'C'] into []")
++print(f"Original algorithm: {merge_original(list_1, list_2)}")
++print(f"Fixed algorithm:    {merge_fixed(list_1, list_2)}")
++print(f"Expected:           ['A', 'B', 'C']")
++
++print("\nAnother test:")
++list_1 = ['X']
++list_2 = ['A', 'B', 'C']
++
++print("Inserting ['A', 'B', 'C'] into ['X']")
++print(f"Original algorithm: {merge_original(list_1, list_2)}")
++print(f"Fixed algorithm:    {merge_fixed(list_1, list_2)}")
++print(f"Expected:           ['X', 'A', 'B', 'C']")
+diff --git a/test_fix.py b/test_fix.py
+new file mode 100644
+index 0000000000..1f3b39eaf3
+--- /dev/null
++++ b/test_fix.py
+@@ -0,0 +1,80 @@
++"""Test the proposed fix"""
++import sys
++import warnings
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++def merge_fixed(list_1, list_2):
++    """
++    Fixed version of merge that updates last_insert_index after insertions.
++    """
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++
++    for path in reversed(list_2):
++        try:
++            index = combined_list.index(path)
++        except ValueError:
++            # Add path to combined_list since it doesn't exist.
++            combined_list.insert(last_insert_index, path)
++            # NEW: Don't update last_insert_index here - keep it pointing to the same logical position
++        else:
++            if index > last_insert_index:
++                warnings.warn(
++                    'Detected duplicate Media files in an opposite order:\n'
++                    '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
++                )
++            last_insert_index = index
++    return combined_list
++
++# Test case from the bug report
++list_1 = ['color-picker.js', 'text-editor.js']
++list_2 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++print("Testing with original algorithm (simulation):")
++print(f"list_1: {list_1}")
++print(f"list_2: {list_2}")
++
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    result = merge_fixed(list_1, list_2)
++    print(f"Result: {result}")
++    if w:
++        print(f"Warnings: {len(w)}")
++        for warning in w:
++            print(f"  {warning.message}")
++    else:
++        print("No warnings!")
++
++# Hmm, wait. Let me think about this differently.
++# The issue is that when we insert at last_insert_index, all elements at that index
++# and after shift by 1. But last_insert_index still points to the same numeric value.
++
++print("\n--- Detailed trace ---")
++
++def merge_trace_detailed(list_1, list_2):
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++    print(f"Initial: combined_list={combined_list}, last_insert_index={last_insert_index}")
++
++    for i, path in enumerate(reversed(list_2)):
++        print(f"\nStep {i+1}: Processing '{path}'")
++        try:
++            index = combined_list.index(path)
++            print(f"  Found at index {index}")
++            if index > last_insert_index:
++                print(f"  WARNING: {index} > {last_insert_index}")
++                print(f"    combined_list[{last_insert_index}] = '{combined_list[last_insert_index]}'")
++                print(f"    combined_list[{index}] = '{combined_list[index]}'")
++            last_insert_index = index
++            print(f"  Set last_insert_index = {last_insert_index}")
++        except ValueError:
++            print(f"  Not found, inserting at index {last_insert_index}")
++            combined_list.insert(last_insert_index, path)
++            print(f"  combined_list is now: {combined_list}")
++            print(f"  last_insert_index unchanged: {last_insert_index}")
++            print(f"  BUT combined_list[{last_insert_index}] is now '{combined_list[last_insert_index]}'")
++
++    print(f"\nFinal: {combined_list}")
++    return combined_list
++
++merge_trace_detailed(list_1, list_2)
+diff --git a/test_js_lists.py b/test_js_lists.py
+new file mode 100644
+index 0000000000..2117a5f47f
+--- /dev/null
++++ b/test_js_lists.py
+@@ -0,0 +1,27 @@
++"""Test _js_lists"""
++import sys
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++import warnings
++from django.forms.widgets import Media
++
++m1 = Media(js=['color-picker.js'])
++m2 = Media(js=['text-editor.js'])
++m3 = Media(js=['text-editor.js', 'text-editor-extras.js', 'color-picker.js'])
++
++print("m1._js_lists:", m1._js_lists)
++print("m2._js_lists:", m2._js_lists)
++print("m3._js_lists:", m3._js_lists)
++
++m_combined = m1 + m2 + m3
++print("\n(m1 + m2 + m3)._js_lists:", m_combined._js_lists)
++
++print("\nMerging all lists:")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    result = m_combined._js
++    print(f"Result: {result}")
++    if w:
++        print(f"Warnings: {len(w)}")
++        for warning in w:
++            print(f"  {warning.message}")
+diff --git a/test_media_bug.py b/test_media_bug.py
+new file mode 100644
+index 0000000000..eea8690874
+--- /dev/null
++++ b/test_media_bug.py
+@@ -0,0 +1,65 @@
++"""Test case to reproduce the MediaOrderConflictWarning bug"""
++import os
++import django
++from django.conf import settings
++
++os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tests.settings')
++if not settings.configured:
++    settings.configure(DEBUG=True, SECRET_KEY='test')
++django.setup()
++
++import warnings
++from django import forms
++
++class ColorPicker(forms.Widget):
++    class Media:
++        js = ['color-picker.js']
++
++class SimpleTextWidget(forms.Widget):
++    class Media:
++        js = ['text-editor.js']
++
++class FancyTextWidget(forms.Widget):
++    class Media:
++        js = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++class MyForm(forms.Form):
++    background_color = forms.CharField(widget=ColorPicker())
++    intro = forms.CharField(widget=SimpleTextWidget())
++    body = forms.CharField(widget=FancyTextWidget())
++
++# Catch warnings
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    media = MyForm().media
++    print("Media result:", media)
++    print("JS files:", media._js)
++    if w:
++        print("\nWarnings caught:")
++        for warning in w:
++            print(f"  {warning.category.__name__}: {warning.message}")
++    else:
++        print("\nNo warnings!")
++
++# Let's trace what happens step by step
++print("\n--- Step by step merge ---")
++m1 = ColorPicker().media
++print(f"ColorPicker media: {m1._js}")
++
++m2 = SimpleTextWidget().media
++print(f"SimpleTextWidget media: {m2._js}")
++
++m12 = m1 + m2
++print(f"ColorPicker + SimpleTextWidget: {m12._js}")
++
++m3 = FancyTextWidget().media
++print(f"FancyTextWidget media: {m3._js}")
++
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m123 = m12 + m3
++    print(f"(ColorPicker + SimpleTextWidget) + FancyTextWidget: {m123._js}")
++    if w:
++        print("  Warnings in this step:")
++        for warning in w:
++            print(f"    {warning.category.__name__}: {warning.message}")
+diff --git a/test_media_simple.py b/test_media_simple.py
+new file mode 100644
+index 0000000000..4ba4f7e52f
+--- /dev/null
++++ b/test_media_simple.py
+@@ -0,0 +1,43 @@
++"""Test case to reproduce the MediaOrderConflictWarning bug - direct Media testing"""
++import sys
++import warnings
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++# Import Media directly
++from django.forms.widgets import Media
++
++# Simulate the three widgets
++m1 = Media(js=['color-picker.js'])  # ColorPicker
++m2 = Media(js=['text-editor.js'])  # SimpleTextWidget
++m3 = Media(js=['text-editor.js', 'text-editor-extras.js', 'color-picker.js'])  # FancyTextWidget
++
++print("Widget 1 (ColorPicker):", m1._js)
++print("Widget 2 (SimpleTextWidget):", m2._js)
++print("Widget 3 (FancyTextWidget):", m3._js)
++
++# Test merging in the order that happens in forms
++print("\n--- Step by step merge ---")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m12 = m1 + m2
++    print(f"m1 + m2: {m12._js}")
++    if w:
++        for warning in w:
++            print(f"  Warning: {warning.message}")
++
++print()
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m123 = m12 + m3
++    print(f"(m1 + m2) + m3: {m123._js}")
++    if w:
++        for warning in w:
++            print(f"  Warning: {warning.message}")
++
++# What we expect: ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++# The constraint from m3 says text-editor.js must come before text-editor-extras.js
++# and text-editor-extras.js must come before color-picker.js
++
++print("\n--- Expected result ---")
++print("Expected: ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']")
++print(f"Actual:   {m123._js}")
+diff --git a/test_merge_trace.py b/test_merge_trace.py
+new file mode 100644
+index 0000000000..81fe8b500f
+--- /dev/null
++++ b/test_merge_trace.py
+@@ -0,0 +1,39 @@
++"""Trace through the merge logic step by step"""
++import sys
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++def merge_trace(list_1, list_2):
++    """
++    Trace through the merge algorithm to understand what's happening.
++    """
++    print(f"\n=== Merging {list_1} + {list_2} ===")
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++    print(f"Initial combined_list: {combined_list}, last_insert_index: {last_insert_index}")
++
++    for path in reversed(list_2):
++        print(f"\nProcessing '{path}' from list_2 (reversed)")
++        try:
++            index = combined_list.index(path)
++            print(f"  '{path}' found at index {index}")
++        except ValueError:
++            print(f"  '{path}' not found, inserting at index {last_insert_index}")
++            combined_list.insert(last_insert_index, path)
++            print(f"  combined_list is now: {combined_list}")
++        else:
++            if index > last_insert_index:
++                print(f"  WARNING: index ({index}) > last_insert_index ({last_insert_index})")
++                print(f"  This indicates {combined_list[last_insert_index]} should come before {combined_list[index]}")
++            else:
++                print(f"  OK: index ({index}) <= last_insert_index ({last_insert_index})")
++            last_insert_index = index
++            print(f"  Updated last_insert_index to {last_insert_index}")
++
++    print(f"\nFinal result: {combined_list}")
++    return combined_list
++
++# Test case from the bug report
++list_1 = ['color-picker.js', 'text-editor.js']
++list_2 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++result = merge_trace(list_1, list_2)
+diff --git a/test_real_fix.py b/test_real_fix.py
+new file mode 100644
+index 0000000000..6e7c24b8a0
+--- /dev/null
++++ b/test_real_fix.py
+@@ -0,0 +1,101 @@
++"""Test the real fix: increment last_insert_index after insertion"""
++import sys
++import warnings
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++def merge_original(list_1, list_2):
++    """Original merge function"""
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++
++    for path in reversed(list_2):
++        try:
++            index = combined_list.index(path)
++        except ValueError:
++            combined_list.insert(last_insert_index, path)
++        else:
++            if index > last_insert_index:
++                warnings.warn(
++                    'Detected duplicate Media files in an opposite order:\n'
++                    '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
++                )
++            last_insert_index = index
++    return combined_list
++
++def merge_fixed(list_1, list_2):
++    """
++    Fixed merge function: keep track of the element we're tracking, not just its index.
++    """
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++
++    for path in reversed(list_2):
++        try:
++            index = combined_list.index(path)
++        except ValueError:
++            combined_list.insert(last_insert_index, path)
++            # FIX: After inserting, increment last_insert_index so it still points
++            # to the element that was there before, which has now shifted right by 1
++            last_insert_index += 1
++        else:
++            if index > last_insert_index:
++                warnings.warn(
++                    'Detected duplicate Media files in an opposite order:\n'
++                    '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
++                )
++            last_insert_index = index
++    return combined_list
++
++# Test case from the bug report
++list_1 = ['color-picker.js', 'text-editor.js']
++list_2 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++print("=== Original merge ===")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    result_orig = merge_original(list_1, list_2)
++    print(f"Result: {result_orig}")
++    print(f"Warnings: {len(w)}")
++    for warning in w:
++        print(f"  {warning.message}")
++
++print("\n=== Fixed merge ===")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    result_fixed = merge_fixed(list_1, list_2)
++    print(f"Result: {result_fixed}")
++    print(f"Warnings: {len(w)}")
++    for warning in w:
++        print(f"  {warning.message}")
++
++print(f"\nExpected: ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']")
++
++# Let's also trace through the fixed version
++print("\n=== Trace of fixed merge ===")
++def merge_fixed_trace(list_1, list_2):
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++    print(f"Initial: combined_list={combined_list}, last_insert_index={last_insert_index}")
++
++    for i, path in enumerate(reversed(list_2)):
++        print(f"\nStep {i+1}: Processing '{path}'")
++        try:
++            index = combined_list.index(path)
++            print(f"  Found at index {index}")
++            if index > last_insert_index:
++                print(f"  WARNING: {index} > {last_insert_index}")
++                print(f"    combined_list[{last_insert_index}] = '{combined_list[last_insert_index]}'")
++                print(f"    combined_list[{index}] = '{combined_list[index]}'")
++            last_insert_index = index
++            print(f"  Set last_insert_index = {last_insert_index}")
++        except ValueError:
++            print(f"  Not found, inserting at index {last_insert_index}")
++            combined_list.insert(last_insert_index, path)
++            print(f"  combined_list is now: {combined_list}")
++            last_insert_index += 1  # FIX
++            print(f"  Incremented last_insert_index to {last_insert_index}")
++
++    print(f"\nFinal: {combined_list}")
++    return combined_list
++
++merge_fixed_trace(list_1, list_2)
+diff --git a/test_simpler_case.py b/test_simpler_case.py
+new file mode 100644
+index 0000000000..4cd938b10d
+--- /dev/null
++++ b/test_simpler_case.py
+@@ -0,0 +1,54 @@
++"""Test a simpler case to understand the algorithm"""
++import sys
++import warnings
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++from django.forms.widgets import Media
++
++# Simple case: A clear conflict
++m1 = Media(js=['A.js', 'B.js'])  # A before B
++m2 = Media(js=['B.js', 'A.js'])  # B before A
++
++print("Case 1: Clear conflict")
++print(f"m1: {m1._js}")
++print(f"m2: {m2._js}")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m12 = m1 + m2
++    print(f"m1 + m2: {m12._js}")
++    if w:
++        for warning in w:
++            print(f"  Warning: {warning.message}")
++print()
++
++# Another case: No conflict, just new elements
++m3 = Media(js=['A.js'])
++m4 = Media(js=['A.js', 'B.js'])
++
++print("Case 2: No conflict, just extension")
++print(f"m3: {m3._js}")
++print(f"m4: {m4._js}")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m34 = m3 + m4
++    print(f"m3 + m4: {m34._js}")
++    if w:
++        for warning in w:
++            print(f"  Warning: {warning.message}")
++print()
++
++# The bug case
++m5 = Media(js=['C.js', 'A.js'])  # C and A are independent, but appear in this order
++m6 = Media(js=['A.js', 'B.js', 'C.js'])  # A→B→C is the real constraint
++
++print("Case 3: The bug (fake constraint)")
++print(f"m5: {m5._js}")
++print(f"m6: {m6._js}")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m56 = m5 + m6
++    print(f"m5 + m6: {m56._js}")
++    print(f"Expected: ['A.js', 'B.js', 'C.js']")
++    if w:
++        for warning in w:
++            print(f"  Warning: {warning.message}")
+diff --git a/test_topological_sort.py b/test_topological_sort.py
+new file mode 100644
+index 0000000000..ee3e18e7a8
+--- /dev/null
++++ b/test_topological_sort.py
+@@ -0,0 +1,79 @@
++"""
++Test an alternative approach: topological sort with dependency tracking.
++
++Instead of merging pairwise, we could:
++1. Collect all files
++2. Track dependencies (A must come before B if they appear in that order in any list)
++3. Topological sort
++
++But wait, that would require changing the _js property to do something different.
++And it might break backwards compatibility.
++
++Actually, let me think about the merge algorithm differently. The current algorithm:
++- Starts with list_1 as the base
++- Tries to insert elements from list_2 while maintaining list_2's order
++- Warns if there's a conflict
++
++The issue is that when list_1 and list_2 have no common elements (or only one common element),
++the result creates a new "constraint" that wasn't in either original list.
++
++Example:
++list_1 = ['A.js']
++list_2 = ['B.js']
++Result: ['A.js', 'B.js']  # This creates the constraint A before B, but it's arbitrary!
++
++Then if we merge this with list_3 = ['B.js', 'C.js', 'A.js'], we get a false conflict.
++
++Hmm, but I'm not sure we can avoid this without a major rewrite.
++
++Actually, wait. Let me check: does the order of merging matter? What if we merged in a different order?
++
++m1 = ColorPicker()  # ['color-picker.js']
++m2 = SimpleTextWidget()  # ['text-editor.js']
++m3 = FancyTextWidget()  # ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++
++Current: (m1 + m2) + m3
++Alternative: m1 + (m2 + m3)
++
++Let's try it!
++"""
++
++import sys
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++import warnings
++from django.forms.widgets import Media
++
++m1 = Media(js=['color-picker.js'])
++m2 = Media(js=['text-editor.js'])
++m3 = Media(js=['text-editor.js', 'text-editor-extras.js', 'color-picker.js'])
++
++print("Option 1: (m1 + m2) + m3")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m12 = m1 + m2
++    print(f"  m1 + m2 = {m12._js}")
++    m123 = m12 + m3
++    print(f"  (m1 + m2) + m3 = {m123._js}")
++    if w:
++        print(f"  Warnings: {len(w)}")
++
++print("\nOption 2: m1 + (m2 + m3)")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m23 = m2 + m3
++    print(f"  m2 + m3 = {m23._js}")
++    m123_alt = m1 + m23
++    print(f"  m1 + (m2 + m3) = {m123_alt._js}")
++    if w:
++        print(f"  Warnings: {len(w)}")
++
++print("\nOption 3: (m1 + m3) + m2")
++with warnings.catch_warnings(record=True) as w:
++    warnings.simplefilter("always")
++    m13 = m1 + m3
++    print(f"  m1 + m3 = {m13._js}")
++    m132 = m13 + m2
++    print(f"  (m1 + m3) + m2 = {m132._js}")
++    if w:
++        print(f"  Warnings: {len(w)}")
+diff --git a/trace_option3.py b/trace_option3.py
+new file mode 100644
+index 0000000000..5aa3754dfc
+--- /dev/null
++++ b/trace_option3.py
+@@ -0,0 +1,42 @@
++"""Trace through Option 3"""
++import sys
++sys.path.insert(0, '/private/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q/django')
++
++def merge_trace(list_1, list_2, label):
++    print(f"\n=== {label} ===")
++    print(f"list_1: {list_1}")
++    print(f"list_2: {list_2}")
++
++    combined_list = list(list_1)
++    last_insert_index = len(list_1)
++    print(f"Initial: combined_list={combined_list}, last_insert_index={last_insert_index}")
++
++    for path in reversed(list_2):
++        print(f"\nProcessing '{path}'")
++        try:
++            index = combined_list.index(path)
++            print(f"  Found at index {index}")
++            if index > last_insert_index:
++                print(f"  WARNING: {index} > {last_insert_index}")
++            last_insert_index = index
++            print(f"  Set last_insert_index = {last_insert_index}")
++        except ValueError:
++            print(f"  Not found, inserting at index {last_insert_index}")
++            combined_list.insert(last_insert_index, path)
++            print(f"  combined_list = {combined_list}")
++            last_insert_index += 1  # Apply the fix
++            print(f"  Incremented last_insert_index to {last_insert_index}")
++
++    print(f"\nResult: {combined_list}")
++    return combined_list
++
++# Option 3: (m1 + m3) + m2
++m1 = ['color-picker.js']
++m3 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']
++m2 = ['text-editor.js']
++
++m13 = merge_trace(m1, m3, "m1 + m3")
++m132 = merge_trace(m13, m2, "(m1 + m3) + m2")
++
++print(f"\n\nExpected: ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']")
++print(f"Got:      {m132}")
+diff --git a/understand_algorithm.py b/understand_algorithm.py
+new file mode 100644
+index 0000000000..9709cb3030
+--- /dev/null
++++ b/understand_algorithm.py
+@@ -0,0 +1,92 @@
++"""
++Understand what the merge algorithm is TRYING to do.
++
++The algorithm processes list_2 in REVERSE order. The idea is:
++1. Start with list_1 as the base
++2. For each element in list_2 (processed in reverse):
++   a. If it already exists in combined_list, remember its position (last_insert_index)
++   b. If it doesn't exist, insert it at last_insert_index
++3. This way, we maintain list_2's relative ordering while keeping elements from list_1
++
++Example: list_1 = ['A', 'B'], list_2 = ['B', 'C', 'D']
++Process list_2 in reverse: ['D', 'C', 'B']
++
++Step 1: Process 'D'
++  - Not found, insert at position 2 (end)
++  - combined_list = ['A', 'B', 'D']
++  - last_insert_index = 2 (unchanged)
++
++Step 2: Process 'C'
++  - Not found, insert at position 2
++  - combined_list = ['A', 'B', 'C', 'D']
++  - last_insert_index = 2 (unchanged)
++
++Step 3: Process 'B'
++  - Found at position 1
++  - last_insert_index = 1
++
++Result: ['A', 'B', 'C', 'D']  ✓ Correct!
++
++Now let's try the bug case: list_1 = ['C', 'A'], list_2 = ['A', 'B', 'C']
++Process list_2 in reverse: ['C', 'B', 'A']
++
++Step 1: Process 'C'
++  - Found at position 0
++  - last_insert_index = 0
++
++Step 2: Process 'B'
++  - Not found, insert at position 0
++  - combined_list = ['B', 'C', 'A']
++  - last_insert_index = 0 (unchanged, but now points to 'B')
++
++Step 3: Process 'A'
++  - Found at position 2
++  - 2 > 0, so WARNING about 'B' and 'A'
++  - last_insert_index = 2
++
++Result: ['B', 'C', 'A']
++
++The issue is clear: after inserting 'B' at position 0, last_insert_index still points
++to position 0, but that's now 'B' (the newly inserted element), not 'C' (which we
++actually wanted to track).
++
++THE FIX: When we insert an element at last_insert_index, all elements at and after
++that position shift right by 1. So we need to increment last_insert_index to keep
++tracking the same element.
++
++Let's try again with the fix:
++
++Step 1: Process 'C'
++  - Found at position 0
++  - last_insert_index = 0
++
++Step 2: Process 'B'
++  - Not found, insert at position 0
++  - combined_list = ['B', 'C', 'A']
++  - last_insert_index = 1 (incremented to keep tracking 'C')
++
++Step 3: Process 'A'
++  - Found at position 2
++  - 2 > 1, so WARNING about 'C' and 'A'
++  - last_insert_index = 2
++
++Result: ['B', 'C', 'A']
++
++Hmm, still wrong. The result should be ['A', 'B', 'C'].
++
++OH! I see the issue now. The constraint is:
++- list_1 says: C before A
++- list_2 says: A before C
++
++That IS a genuine conflict! The algorithm warns about it and keeps list_1's ordering.
++
++But the issue report says this shouldn't be a conflict because C and A were independent
++in the original media objects. They only got ordered when ColorPicker and SimpleTextWidget
++were merged.
++
++So the solution isn't to fix the merge algorithm - it's to fix how the merges are done!
++Instead of merging pairwise from left to right, we should merge all lists at once,
++tracking only the constraints that are explicitly present in each original list.
++"""
++
++print(__doc__)

@@ -1,0 +1,29 @@
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index 0c64748ccd..a5e315ab6e 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1701,6 +1701,15 @@ class FilePathField(Field):
+             del kwargs["max_length"]
+         return name, path, args, kwargs
+ 
++    def get_path(self):
++        """
++        Return the path to use for FilePathField. If path is callable,
++        invoke it to get the actual path.
++        """
++        if callable(self.path):
++            return self.path()
++        return self.path
++
+     def get_prep_value(self, value):
+         value = super().get_prep_value(value)
+         if value is None:
+@@ -1709,7 +1718,7 @@ class FilePathField(Field):
+ 
+     def formfield(self, **kwargs):
+         return super().formfield(**{
+-            'path': self.path,
++            'path': self.get_path(),
+             'match': self.match,
+             'recursive': self.recursive,
+             'form_class': forms.FilePathField,
