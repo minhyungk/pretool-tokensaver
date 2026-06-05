@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Secrets / local config
+.env
+
+# Claude Code project settings
+.claude/
+
+# Logs & runtime output
+log.txt
+/tmp/aegis_hook.jsonl
+/tmp/aegis_state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/

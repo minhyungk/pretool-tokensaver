@@ -1,0 +1,391 @@
+{
+  "mode": "executed",
+  "n": 20,
+  "context_budget": 50000,
+  "generated_at": 1780622128.64769,
+  "model": "sonnet",
+  "tests_run": true,
+  "workdir": "/var/folders/q3/7cjnnfc12vz35knz4ht47wxw0000gn/T/swe_exec_1dvekb8q",
+  "rows": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/modeling/separable.py"
+      ],
+      "no_filter": {
+        "tokens": 20697,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 440,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/io/ascii/rst.py"
+      ],
+      "no_filter": {
+        "tokens": 21380,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 2048,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14365",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/io/ascii/qdp.py"
+      ],
+      "no_filter": {
+        "tokens": 24208,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 420,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14995",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/nddata/mixins/ndarithmetic.py"
+      ],
+      "no_filter": {
+        "tokens": 89834,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 940,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-6938",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/io/fits/fitsrec.py"
+      ],
+      "no_filter": {
+        "tokens": 89720,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 680,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-7746",
+      "repo": "astropy/astropy",
+      "gold_files": [
+        "astropy/wcs/wcs.py"
+      ],
+      "no_filter": {
+        "tokens": 252394,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 480,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-10914",
+      "repo": "django/django",
+      "gold_files": [
+        "django/conf/global_settings.py"
+      ],
+      "no_filter": {
+        "tokens": 123945,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 960,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-10924",
+      "repo": "django/django",
+      "gold_files": [
+        "django/db/models/fields/__init__.py"
+      ],
+      "no_filter": {
+        "tokens": 140483,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 920,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11001",
+      "repo": "django/django",
+      "gold_files": [
+        "django/db/models/sql/compiler.py"
+      ],
+      "no_filter": {
+        "tokens": 88356,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 760,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11019",
+      "repo": "django/django",
+      "gold_files": [
+        "django/forms/widgets.py"
+      ],
+      "no_filter": {
+        "tokens": 30119,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 630,
+        "gold_read": true,
+        "test_pass": false,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11039",
+      "repo": "django/django",
+      "gold_files": [
+        "django/core/management/commands/sqlmigrate.py"
+      ],
+      "no_filter": {
+        "tokens": 111308,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 600,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11049",
+      "repo": "django/django",
+      "gold_files": [
+        "django/db/models/fields/__init__.py"
+      ],
+      "no_filter": {
+        "tokens": 85654,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 680,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11099",
+      "repo": "django/django",
+      "gold_files": [
+        "django/contrib/auth/validators.py"
+      ],
+      "no_filter": {
+        "tokens": 12209,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 331,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11133",
+      "repo": "django/django",
+      "gold_files": [
+        "django/http/response.py"
+      ],
+      "no_filter": {
+        "tokens": 22971,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 350,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11179",
+      "repo": "django/django",
+      "gold_files": [
+        "django/db/models/deletion.py"
+      ],
+      "no_filter": {
+        "tokens": 39137,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 330,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11283",
+      "repo": "django/django",
+      "gold_files": [
+        "django/contrib/auth/migrations/0011_update_proxy_permissions.py"
+      ],
+      "no_filter": {
+        "tokens": 15171,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 1742,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11422",
+      "repo": "django/django",
+      "gold_files": [
+        "django/utils/autoreload.py"
+      ],
+      "no_filter": {
+        "tokens": 30629,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 650,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11564",
+      "repo": "django/django",
+      "gold_files": [
+        "django/conf/__init__.py"
+      ],
+      "no_filter": {
+        "tokens": 35536,
+        "gold_read": false,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 1319,
+        "gold_read": false,
+        "test_pass": false,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11583",
+      "repo": "django/django",
+      "gold_files": [
+        "django/utils/autoreload.py"
+      ],
+      "no_filter": {
+        "tokens": 22667,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 350,
+        "gold_read": true,
+        "test_pass": true,
+        "has_patch": true
+      }
+    },
+    {
+      "instance_id": "django__django-11620",
+      "repo": "django/django",
+      "gold_files": [
+        "django/views/debug.py"
+      ],
+      "no_filter": {
+        "tokens": 81701,
+        "gold_read": false,
+        "test_pass": false,
+        "has_patch": true
+      },
+      "filter": {
+        "tokens": 1154,
+        "gold_read": false,
+        "test_pass": false,
+        "has_patch": false
+      }
+    }
+  ]
+}

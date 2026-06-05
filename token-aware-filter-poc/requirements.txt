@@ -1,0 +1,6 @@
+# Phase 0 (simulation harness) + Phase 2 dataset loading
+datasets
+
+# Phase 2 real evaluation only (--execute --run-tests): official SWE-bench
+# Docker harness. Optional; the default simulated run does not need it.
+# swebench
